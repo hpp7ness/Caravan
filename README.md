@@ -60,4 +60,5 @@ This project is currently under active development. Core gameplay systems are be
 This project is inspired by **Caravan**, the in-game card game featured in *Fallout: New Vegas*. The goal is to recreate the experience as faithfully as possible while serving as a learning project for C++, game architecture, and AI development.
 
 _Project is solely made and maintained by me_
+
 _AI was only used in creation of README file_
