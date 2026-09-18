@@ -5,18 +5,28 @@
 #include <fstream>
 #include <cmath>
 #include <cctype>
+#include <string>
 
-// Rules: https://fallout.fandom.com/wiki/How_to_play_Caravan
+/*
+Rules: https://fallout.fandom.com/wiki/How_to_play_Caravan
 
-// TODO:
-// 1. Break up main function into mini functions
-// 2. Bot AI (Easy, forgets cards that get discarded, chooses non-best game state moves)
-// 3. Win, lose, tie 
-// 4. Preset decks (Bot)
-// 5. Placing on enemy's caravans
-// 6. Bot AI (Explore other difficulties | Medium remember cards that get discarded, Hard tries to use all information to narrow down possible cards in the player's hand, extreme, hard + best game state moves)
-// #? Visual/non-text/non-terminal interface (SFML? OpenGL? SDL?)
-// #? Online multiplayer
+TODO:
+    1. Improve repeated code (ex: code that only differs by player_caravan1, player_caravan2, player_caravan3)
+    2. Break up caravan_add's responsibilities/refactor caravan_add.
+    3. Add way to go through add, discard, and disband with nums
+    4. Refactor string cin input loops (use botton quit loop as reference!)
+    4. Bot AI (Easy, forgets cards that get discarded, chooses non-best game state moves)
+    5. Preset decks (Bot)
+    6. Keep heuristic ai as baby or tutorial mode?
+    7. Add automated rule tests (test to make sure kings and faces, status, direct, etc works properly) !!! Move up? !!!
+    8. Placing on enemy's caravans
+    9. Bot AI (Explore other difficulties | Medium remember cards that get discarded, Hard tries to use all information to narrow down possible cards in the player's hand, extreme, hard + best game state moves)
+    #? Make discard function? (would take a lot of going through old functions and replacing old scripts), optional
+    #? Visual/non-text/non-terminal interface (SFML? OpenGL? SDL?)
+    #? Online multiplayer 
+
+    graphics refactor advice: https://chatgpt.com/share/6a6ecac2-55c4-83ea-9b07-ea8d90c2ade1
+*/
 
 struct Card {
     int rank;
@@ -45,45 +55,27 @@ struct Caravan {
     Direction direction;
     caravanID ID;
     int val;
+    std::string status;
     std::string name;
 };
 
 struct GameState {
-    std::vector<Card> player_hand;
-    std::vector<Card> bot_hand;
-
     std::vector<Card> player_deck;
     std::vector<Card> bot_deck;
+
+    std::vector<Card> player_hand;
+    std::vector<Card> bot_hand;
 
     std::vector<Card> player_discard;
     std::vector<Card> bot_discard;
 
-    Caravan player_caravan1;
-    Caravan player_caravan2;
-    Caravan player_caravan3;
+    std::vector<Caravan> player_caravans;
 
-    Caravan bot_caravan1;
-    Caravan bot_caravan2;
-    Caravan bot_caravan3;
+    std::vector<Caravan> bot_caravans;
+
+    int caps;
+    int bet;
 };
-
-
-void bot_actions(Caravan& caravan, const Card& card) {
-    // Implement bot actions based on the card and caravan state
-}
-
-void save(int caps) {
-    std::cout << "Caps: " << caps << std::endl;
-
-    std::ofstream outfile;
-
-    outfile.open("caps.txt");
-
-    if (outfile.is_open()) {
-        outfile << caps;
-        outfile.close();
-    }
-}
 
 // does x contain y
 bool contains(const std::vector<std::string>& vec, const std::string& target) {
@@ -140,18 +132,18 @@ void direct(Caravan& caravan) {
     }
 }
 
-
 int value(Caravan& caravan) {
     int total = 0;
     int last = 0;
     int kings = 0;
 
-    int index;
+    int index = 0;
     for (auto& card : caravan.cards) {
         index += 1;
         if (card.rank <= 10) {
             total += card.rank;
             last = card.rank;
+            kings = 0;
         } else if (card.rank == 12 || card.rank == 11) { // Handle Jacks seperetly? Maybe when Jack is played just put the Jack and card it was played on in discard, value is then updated?
             continue;
         } else if (card.rank == 13) {
@@ -161,15 +153,15 @@ int value(Caravan& caravan) {
                 } else {
                     break;
                 }    
-            total -= std::pow(last, kings-1);
-            total += std::pow(last, kings);
+            total -= last * std::pow(2, kings-1);
+            total += last * std::pow(2, kings);
         }
     }
     caravan.val = total;
     return total;
 }
 
-void disband (Caravan& caravan, std::vector<Card>& discard) {
+void disband(Caravan& caravan, std::vector<Card>& discard) {
     for (auto& card : caravan.cards) {
             discard.push_back(card);
         }
@@ -225,7 +217,7 @@ bool valid(const Card& played, const Caravan& caravan) {
     return false;
 }
 
-void caravan_add (std::vector<Card>& hand, Caravan& caravan, const int& card, std::vector<Card>& discard) {
+bool caravan_add (std::vector<Card>& hand, Caravan& caravan, const int& card, std::vector<Card>& discard) {
 
     std::cout << " " << std::endl;
 
@@ -245,7 +237,7 @@ void caravan_add (std::vector<Card>& hand, Caravan& caravan, const int& card, st
     }
 
     if (!valid(played, caravan)) { // could take out of function and just place in main
-        return;
+        return false;
     }
 
     caravan.cards.push_back(played);
@@ -259,12 +251,15 @@ void caravan_add (std::vector<Card>& hand, Caravan& caravan, const int& card, st
             discard.push_back(played);
             discard.push_back(caravan.cards.back());
             caravan.cards.pop_back();
-        }
-
-    std::cout << temp << " caravan: " << std::endl;
-    for (const auto& c : caravan.cards) {
-        std::cout << "Rank: " << c.rank << ", Suit: " << c.suit << std::endl;
     }
+
+    if (caravan.name == "player") {
+        std::cout << temp << " caravan: " << std::endl;
+        for (const auto& c : caravan.cards) {
+            std::cout << "Rank: " << c.rank << ", Suit: " << c.suit << std::endl;
+        }
+    }
+    
 
     value(caravan);
     // Overburdon
@@ -273,10 +268,16 @@ void caravan_add (std::vector<Card>& hand, Caravan& caravan, const int& card, st
             discard.push_back(c);
         }
         caravan.cards.clear();
-        std::cout << "Caravan became overburdoned! All cards in caravan moved to discard pile!" << std::endl;
-        std::cout << " " << std::endl;
+        if (caravan.name == "player") {
+            std::cout << "Caravan became overburdoned! All cards in caravan moved to discard pile!" << std::endl;
+            std::cout << " " << std::endl;
+        }
     }
-    std::cout << temp << " caravan value: " << caravan.val << std::endl;
+    if (caravan.name == "player") {
+        std::cout << temp << " caravan value: " << caravan.val << std::endl;
+    }
+
+    return true;
 }
 
 std::string lowercase(std::string str) {
@@ -342,14 +343,113 @@ int distinct(std::vector<Card> deck) {
     return dist;
 }
 
-int main() {
-    // DEBUG
-    bool debug = true;
-    bool tutorial = true;
+void status_update(std::vector<Caravan>& pCaravans, std::vector<Caravan>& bCaravans) {
+    std::vector<int> pVals;
+    for (auto caravan : pCaravans) {
+        pVals.push_back(caravan.val);
+    }
+    std::vector<int> bVals;
+    for (auto caravan : bCaravans) {
+        bVals.push_back(caravan.val);
+    }
+    
+    int dex = 0;
+    for (int val : pVals) {
+        if (val > 26)  {
+            pCaravans[dex].status = "overburnden";
+        } else if ((val >= 21) && (val <= 26)) {
+            pCaravans[dex].status = "sold";
+        } else {
+            pCaravans[dex].status = "active";
+        }
+        dex++;
+    }
+
+    dex = 0;
+    for (int val : bVals) {
+        if (val > 26)  {
+            bCaravans[dex].status = "overburnden";
+        } else if ((val >= 21) && (val <= 26)) {
+            bCaravans[dex].status = "sold";
+        } else {
+            bCaravans[dex].status = "active";
+        }
+        dex++;
+    }
+
+    for (int i; i < 3; i++) {
+        if (pCaravans[i].status == "sold") {
+            if (pCaravans[i].status == bCaravans[i].status) {
+                pCaravans[i].status = "tie";
+                bCaravans[i].status = "tie";
+            }
+        }
+    }
+}
+
+void display(const std::vector<Card>& item, const std::string& tag) {
+    std::cout << tag << ":" << std::endl;
+    for (const auto& card : item) {
+         std::cout << "Rank: " << card.rank << ", Suit: " << card.suit << std::endl;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Globals
+std::random_device rd; // Random seed!!
+std::mt19937 rng(rd());
+
+bool debug = true;
+bool tutorial = true;
+
+GameState cState = {
+    {}, // player_deck
+    {}, // bot_deck
+    {}, // player_hand
+    {}, // bot_hand
+    {}, // player_discard
+    {}, // bot_discard
+    {
+        { {}, Direction::none, caravanID::left, 0, "active", "player" },
+        { {}, Direction::none, caravanID::center, 0, "active", "player" },
+        { {}, Direction::none, caravanID::right, 0, "active", "player" }
+    }, // player_caravans
+    {
+        { {}, Direction::none, caravanID::left, 0, "active", "bot" },
+        { {}, Direction::none, caravanID::center, 0, "active", "bot" },
+        { {}, Direction::none, caravanID::right, 0, "active", "bot" }
+    }, // bot_caravans
+    0, // caps
+    0  // bet
+};
+
+std::vector<std::string> suits = {"Hearts", "Diamonds", "Clubs", "Spades"};
+std::vector<std::string> ranks = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"};
+// Globals
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Old main function broken down
+void setupGameState() {
+
+    for (auto caravan : cState.player_caravans) {
+        caravan.val = value(caravan);
+    }
+    for (auto caravan : cState.bot_caravans) {
+        caravan.val = value(caravan);
+    }
+
+    status_update(cState.player_caravans, cState.bot_caravans);
+}
+
+void intro() {
 
     std::string input;
     std::cout << "Welcome to Caravan!" << std::endl;
     std::cout << "Turn on tutorial mode? y/n ";
+
+    // Improve
     while (!(std::cin >> input) && !(lowercase(input) == "y" || lowercase(input) == "n" || lowercase(input) == "yes" || lowercase(input) == "no")) {
         std::cout << "Invalid input. Please enter 'y' or 'n': ";
         std::cin.clear();
@@ -370,42 +470,63 @@ int main() {
         std::cout << "You can also check out the rules on fallout's Fandom Wiki page: https://fallout.fandom.com/wiki/How_to_play_Caravan" << std::endl;
         std::cout << " " << std::endl;
     }
-    int caps = 5;
+}
+
+void loadCaps() {
     std::ifstream infile("caps.txt");
 
     if (infile.is_open()) {
-        infile >> caps;
+        infile >> cState.caps;
         infile.close();
     }
+    if (debug) {
+        std::cout << "Loaded caps: " << cState.caps << std::endl;
+    } 
 
-    std::cout << "You have " << caps << " caps." << std::endl;
-    std::cout << " " << std::endl;
+    if (cState.caps <= 0) {
+        cState.caps = 5;
+    }
 
+    setupGameState();
+}
+
+void save(int caps) {
+    std::cout << "Caps: " << caps << std::endl;
+
+    std::ofstream outfile;
+
+    outfile.open("caps.txt");
+
+    if (outfile.is_open()) {
+        outfile << caps;
+        outfile.close();
+    }
+}
+
+void startBet() {
     std::cout << "Please enter your bet (positive integer): ";
-    int bet;
 
     if (tutorial) {
         std::cout << " " << std::endl;
-        std::cout << "Please also keep in mind that you can neither bet more than you have, zero, or less than zero." << std::endl;
+        std::cout << "Please also keep in mind that you can't bet more than you have, zero, or less than zero." << std::endl;
         std::cout << " " << std::endl;
     }
 
     bool betting = true;
     while (betting) {
-        while (!(std::cin >> bet)) {
+        while (!(std::cin >> cState.bet) || cState.bet > cState.caps || cState.bet < 0 || (!(tutorial) && cState.bet == 0)) {
             std::cout << "Invalid input. Please enter a positive integer: ";
             std::cin.clear();
             std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
         }
         betting = false;
     }
-    std::cout << "You have betted " << bet << " caps." << std::endl;
+    std::cout << "You have betted " << cState.bet << " caps." << std::endl;
 
-    std::vector<Card> player_deck;
+    setupGameState();
+}
 
-    std::vector<std::string> suits = {"Hearts", "Diamonds", "Clubs", "Spades"};
-    std::vector<std::string> ranks = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"};
-    
+void buildDeck() {
     if (tutorial) {
         std::cout << " " << std::endl;
         std::cout << "You will now build your deck. You will need at least 30 cards in your deck to play, and at least 6 non-face cards split between 2 different values (eg: three 8s and three 6s)!" << std::endl;
@@ -420,16 +541,11 @@ int main() {
         std::cout << " " << std::endl;
     }
 
-
-    // Random seed!!
-    std::random_device rd;
-    std::mt19937 rng(rd());
-
     int dex = 0;
     // player_deck building
     while (true) {
         std::cout << " " << std::endl;
-        int dist = distinct(player_deck);
+        int dist = distinct(cState.player_deck);
         if (dex == 0) {
             bool preset = false;
             std::cout << "Would you like to use a preset deck? y/n ";
@@ -485,30 +601,30 @@ int main() {
                         // Basic preset
                         for (std::string suit : suits) {
                             for (int rank = 1; rank <= 13; rank++) {
-                                player_deck.push_back({rank, suit});
+                                cState.player_deck.push_back({rank, suit});
                             }
                         }
                         break;
                     case 2:
                         // Meta preset
-                        while (player_deck.size() < 30) {
-                            player_deck.push_back({10, suits[0]}); // 10 of hearts
-                            player_deck.push_back({9, suits[0]}); // 9 of hearts
-                            player_deck.push_back({7, suits[0]}); // 7 of hearts
+                        while (cState.player_deck.size() < 30) {
+                            cState.player_deck.push_back({10, suits[0]}); // 10 of hearts
+                            cState.player_deck.push_back({9, suits[0]}); // 9 of hearts
+                            cState.player_deck.push_back({7, suits[0]}); // 7 of hearts
                         }                        
                         break;
                     case 3:
                         // Aggressive preset
                         // Meta deck with face cards
-                        while (player_deck.size() < 30) {
-                            player_deck.push_back({10, suits[0]});
-                            player_deck.push_back({9, suits[0]});
-                            player_deck.push_back({7, suits[0]});
+                        while (cState.player_deck.size() < 30) {
+                            cState.player_deck.push_back({10, suits[0]});
+                            cState.player_deck.push_back({9, suits[0]});
+                            cState.player_deck.push_back({7, suits[0]});
                         } 
                         for (int i = 0; i < 6; i++) {
-                            player_deck.push_back({11, suits[0]});
-                            player_deck.push_back({12, suits[0]});
-                            player_deck.push_back({13, suits[0]});
+                            cState.player_deck.push_back({11, suits[0]});
+                            cState.player_deck.push_back({12, suits[0]});
+                            cState.player_deck.push_back({13, suits[0]});
                         }
                         break;
                     case 4:
@@ -516,26 +632,26 @@ int main() {
                         // Basic preset without face cards
                         for (std::string suit : suits) {
                             for (int rank = 1; rank <= 10; rank++) {
-                                player_deck.push_back({rank, suit});
+                                cState.player_deck.push_back({rank, suit});
                             }
                         }                        
                         break;
                     case 5:
                         // Random preset
-                        while (player_deck.size() < 30) {
+                        while (cState.player_deck.size() < 30) {
                             std::uniform_int_distribution<int> rank_dist(1, 13);
                             std::uniform_int_distribution<int> suit_dist(0, suits.size() - 1);
 
-                            player_deck.push_back({rank_dist(rng), suits[suit_dist(rng)]});
+                            cState.player_deck.push_back({rank_dist(rng), suits[suit_dist(rng)]});
                         }
                         int non_faces = 0;
-                        non_faces = count_if(player_deck.begin(), player_deck.end(),
+                        non_faces = count_if(cState.player_deck.begin(), cState.player_deck.end(),
                             [&](const Card& c) {
                                 return c.rank <= 10;
                             });
-                        while (distinct(player_deck) < 2 || non_faces < 6) {
-                            player_deck.push_back({rand() % 10 + 1, suits[rand() % suits.size()]});
-                            non_faces = count_if(player_deck.begin(), player_deck.end(),
+                        while (distinct(cState.player_deck) < 2 || non_faces < 6) {
+                            cState.player_deck.push_back({rand() % 10 + 1, suits[rand() % suits.size()]});
+                            non_faces = count_if(cState.player_deck.begin(), cState.player_deck.end(),
                                 [&](const Card& c) {
                                     return c.rank <= 10;
                                 });
@@ -552,7 +668,7 @@ int main() {
         dex += 1;
         std::string want_suit;
         std::string want_rank;
-        int amount;
+        int amount = 0;
 
         std::cout << "Enter the suit you want (Hearts, Diamonds, Clubs, Spades): ";
         while (!(std::cin >> want_suit) || contains(suits, normalize_suit(want_suit)) == false && lowercase(want_suit) != "confirm") {
@@ -578,11 +694,11 @@ int main() {
             if (dist < 2) {
                 std::cout << "You need at least 6 non-face cards split between 2 different values (eg: three 8s and three 6s) in your player_deck to play! " << std::endl;
             }
-            if (player_deck.size() < 30) {
-                std::cout << "You need at least 30 cards in your deck to play! You currently have: " << player_deck.size() << std::endl;
+            if (cState.player_deck.size() < 30) {
+                std::cout << "You need at least 30 cards in your deck to play! You currently have: " << cState.player_deck.size() << std::endl;
             }
             if (!(dist < 2)) {
-                if (!(player_deck.size() < 30)) {
+                if (!(cState.player_deck.size() < 30)) {
                     break;
                 }
             }
@@ -598,101 +714,222 @@ int main() {
         }
 
         for (int i = 0; i < amount; ++i) {
-            try {
-            player_deck.push_back({stoi(want_rank), want_suit});
-            } catch (std::invalid_argument) {
-                std::cout << "STOI ERROR AT LINE 244! This is for debugging purposes only. If found please report to developer." << std::endl;
-                std::string temp;
-                std::cin >> temp;
-                if (temp.empty()) {
-                    return 0;
-                }
-            }
-        }
+            cState.player_deck.push_back({stoi(want_rank), want_suit});
         std::cout << " " << std::endl;
+        }
     }
 
-    // Shuffle the player_deck
-    std::shuffle(player_deck.begin(), player_deck.end(), rng);
+    setupGameState();
+}
 
+void botDeck() {
+    // Bot deck 
+    // Increased difficulties == better decks!
+    // Add deck types, like Aggressive, Passive, Meta, Random, etc. Could mix with difficulty levels, or just have difficulty levels be the deck types.
+    for (std::string suit : suits) {
+        for (int rank = 1; rank <= 13; rank++) {
+            cState.bot_deck.push_back({rank, suit});
+        }
+    }
+}
+
+void debugShuffle() {
     // Display the shuffled player_deck
     // DEBUG
     if (debug) {
-        std::cout << "Shuffled player_deck:" << std::endl;
-        for (const auto& card : player_deck) {
-            std::cout << "Rank: " << card.rank << ", Suit: " << card.suit << std::endl;
-        }
+        display(cState.player_deck, "Shuffled player_deck");
+        display(cState.bot_deck, "Shuffled bot_deck");
     }
+}
 
-
+void deal() {
     // Deals to player
-    std::vector<Card> player_hand;
-    for (const auto& card : player_deck) {
-        if (player_hand.size() < 8) {
-            player_hand.push_back(card);
-            player_deck.pop_back(); 
+    for (const auto& card : cState.player_deck) {
+        if (cState.player_hand.size() < 8) {
+            cState.player_hand.push_back(card);
+            cState.player_deck.pop_back(); 
         } else {
             break;
         }
     }
-
-
-    // Bot deck 
-    // Increased difficulties == better decks!
-    // Add deck types, like Aggressive, Passive, Meta, Random, etc. Could mix with difficulty levels, or just have difficulty levels be the deck types. 
-    std::vector<Card> bot_deck;
-    for (std::string suit : suits) {
-        for (int rank = 1; rank <= 13; rank++) {
-            bot_deck.push_back({rank, suit});
-        }
-    }
-    // Shuffles bot deck
-    std::shuffle(bot_deck.begin(), bot_deck.end(), rng);
-
-    if (debug) {
-        std::cout << "Shuffled bot_deck:" << std::endl;
-        for (const auto& card : bot_deck) {
-            std::cout << "Rank: " << card.rank << ", Suit: " << card.suit << std::endl;
-        }
-    }
-
-    // Deals to bot
-    std::vector<Card> bot_hand;
-    for (const auto& card : bot_deck) {
-        if (bot_hand.size() < 8) {
-            bot_hand.push_back(card);
-            bot_deck.pop_back();
-        } else {
-            break;
-        }
-    }
-
-
-    // make this neater somehow?
-    Caravan player_caravan1;
-    Caravan player_caravan2;
-    Caravan player_caravan3;
-
-    player_caravan1.ID = caravanID::left;
-    player_caravan1.name = "player";
-    player_caravan2.ID = caravanID::center;
-    player_caravan2.name = "player";
-    player_caravan3.ID = caravanID::right;
-    player_caravan3.name = "player";
-
-    Caravan bot_caravan1;
-    Caravan bot_caravan2;
-    Caravan bot_caravan3;
     
-    bot_caravan1.ID = caravanID::left;
-    bot_caravan1.name = "bot";
-    bot_caravan2.ID = caravanID::center;
-    bot_caravan2.name = "bot";
-    bot_caravan3.ID = caravanID::right;
-    bot_caravan3.name = "bot";
+    // Deals to bot
+    for (const auto& card : cState.bot_deck) {
+        if (cState.bot_hand.size() < 8) {
+            cState.bot_hand.push_back(card);
+            cState.bot_deck.pop_back();
+        } else {
+            break;
+        }
+    }
 
-    std::vector<Card> player_discard;
-    std::vector<Card> bot_discard;
+    setupGameState();
+}
+
+bool playerAction() {
+    bool val = false;
+
+    std::cout << " " << std::endl;  
+    // Display player hand
+    display(cState.player_hand, "\nPlayer Hand");
+    
+    std::cout << "Add, discard, or disband: " << std::endl;
+    std::string action;
+    while (!(std::cin >> action) ||  !(lowercase(action) == "add") && !(lowercase(action) == "discard") && !(lowercase(action) == "disband") ) {
+        std::cout << "Invalid input. Ensure the first letter is captitalized! Please pick 'Add', 'Discard', 'Disband': ";
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');            
+    }
+
+    action = lowercase(action);
+
+    int want_card;
+    if (action == "discard" || action == "add") {
+        std::cout << "Please select a card (card 1, 2, etc...): ";
+        
+        while (!(std::cin >> want_card) || !(want_card > 0 && want_card <= 8)) {
+            std::cout << "Invalid input. Please use a positive interger betweemn 1 and 8: ";
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        }
+        want_card -= 1;
+        if (action == "discard") {
+            cState.player_discard.push_back(cState.player_hand[want_card]);
+            cState.player_hand.erase(cState.player_hand.begin() + want_card);
+        }
+    }
+
+    int input;
+    if (action == "add" || action == "disband") {
+        if (action == "add") {
+            std::cout << "Please select a caravan to add " << cState.player_hand[want_card].rank << " of " << cState.player_hand[want_card].suit << " to. (caravan 1, 2, 3, etc...): ";
+        } else {
+            std::cout << "Please select a caravan to add disband: ";
+        }
+        
+        
+        while (!(std::cin >> input) || !(input > 0 && input <= 3)) {
+            std::cout << "Invalid input. Please use a positive interger betweemn 1 and 3: ";
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        }
+        input -= 1;
+        int want_caravan = input;
+        // ADD OPPONENT PLACING
+
+        std::cout << "Want_caravan: " << want_caravan << std::endl;
+        std::cout << "cState.player_caravans length: " << cState.player_caravans.size() << std::endl;
+        // REFACTOR
+        if (action == "add") {
+            if (caravan_add(cState.player_hand, cState.player_caravans[want_caravan], want_card, cState.player_discard)) {
+                val = true;
+            }
+        } else if (action == "disband") {
+            disband(cState.player_caravans[want_caravan], cState.player_discard);
+            val = true;
+        }
+    }
+
+    if (action == "disband" || action == "discard") { 
+        std::cout << " " << '\n';
+        std::cout << " " << '\n';
+        display(cState.player_discard, "Discard pile \n");
+    }
+
+    if (cState.player_deck.size() == 0) {
+        for (auto& card : cState.player_discard) {
+            cState.player_deck.push_back(card);
+        }
+        cState.player_discard.clear();
+        display(cState.player_deck, "Your discard pile has been move to your deck!");       
+    }
+
+    // Player turn needs own loop so they can be sent back up in case of wrong placement (Ex: doesn't follow direction, identical number cards, empty face)
+    cState.player_hand.push_back(cState.player_deck.back());
+    cState.player_deck.pop_back();
+    
+    return val;
+}
+
+void botAction() {
+
+    bool played = false;
+
+    for (Caravan& caravan : cState.bot_caravans) {
+        for (size_t i = 0; i < cState.bot_hand.size(); i++) {
+            if (valid(cState.bot_hand[i], caravan)) {
+                caravan_add(cState.bot_hand, caravan, static_cast<int>(i), cState.bot_discard);
+                played = true;
+                break;
+            }
+        }
+        if (played) {
+            break; // one card per bot turn, same as the player
+        }
+    }
+
+    if (!played && !cState.bot_hand.empty()) {
+        cState.bot_discard.push_back(cState.bot_hand[0]);
+        cState.bot_hand.erase(cState.bot_hand.begin());
+    }
+
+    setupGameState();
+}
+
+std::string winCheck() {
+    std::vector<int> sold_amount = {0,0};
+
+    status_update(cState.player_caravans, cState.bot_caravans);
+    setupGameState();
+
+    for (auto caravan : cState.player_caravans) {
+        if (caravan.status == "sold") {
+            sold_amount[0]++;
+        }
+    }
+    for (auto caravan : cState.bot_caravans) {
+        if (caravan.status == "sold") {
+            sold_amount[1]++;
+        }
+    }
+
+    if (sold_amount[0] > 2) {
+        return "player wins";
+    } else if (sold_amount[1] > 2) {
+        return "bot wins";
+    }
+
+    return "neither";
+}
+// Old main function broken down
+
+
+// Game function for better looping and saves/loads
+int gameFunction() {
+    intro();
+    
+    loadCaps();
+
+    std::cout << "You have " << cState.caps << " caps." << std::endl;
+    std::cout << " " << std::endl;
+
+    startBet();
+
+    buildDeck();
+
+    // Shuffle the player_deck
+    std::shuffle(cState.player_deck.begin(), cState.player_deck.end(), rng);
+
+    display(cState.player_deck, "Your deck");
+
+    botDeck();
+    
+    // Shuffles bot deck
+    std::shuffle(cState.bot_deck.begin(), cState.bot_deck.end(), rng);
+
+    deal();
+
+
     if (tutorial) {
         std::cout << " " << std::endl;
         std::cout << "One more thing. Ive told about sold caravans, but caravans also have two other properties/states." << std::endl;
@@ -712,123 +949,77 @@ int main() {
     // Main game loop
     bool playing = true;
     while (playing) {    
-        std::cout << " " << std::endl;  
-        // Display player hand
-        std::cout << "\nPlayer Hand:" << std::endl;
-        for (const auto& card : player_hand) {
-            std::cout << "Rank: " << card.rank << ", Suit: " << card.suit << std::endl;
+        while (!(playerAction())) {
         }
         
-        std::cout << "Add, discard, or disband: " << std::endl;
-        std::string action;
-        while (!(std::cin >> action) &&  !(action == "Add") || !(action == "Discard") || !(action == "Disband") ) {
-            std::cout << "Invalid input. Ensure the first letter is captitalized! Please pick 'Add', 'Discard', 'Disband': ";
-            std::cin.clear();
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');            
-        }
-
-        // ADD DISCARD 
-        int want_card;
-        if (action == "Discard" || action == "Add") {
-            std::cout << "Please select a card (card 1, 2, etc...): ";
-            
-            while (!(std::cin >> want_card) || !(want_card > 0 && want_card <= 8)) {
-                std::cout << "Invalid input. Please use a positive interger betweemn 1 and 8: ";
-                std::cin.clear();
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            }
-            want_card -= 1;
-            if (action == "Discard") {
-                player_discard.push_back(player_hand[want_card]);
-                player_hand.erase(player_hand.begin() + want_card);
-            }
-        }
-
-
-
-        
-        // ADD DISPAND
-        int input;
-        if (action == "Add" || action == "Disband") {
-            if (action == "Add") {
-                std::cout << "Please select a caravan to add " << player_hand[want_card].rank << " of " << player_hand[want_card].suit << " to. (caravan 1, 2, 3, etc...): ";
+        botAction();
+        std::cout << "Bot caravans: " << std::endl;
+        int dex = 0;
+        std::string temp =  "na";
+        for (const auto& caravan : cState.bot_caravans) {
+            if (dex == 0) { 
+                temp = "Left";
+            } else if (dex == 1) {
+                temp = "Center";
             } else {
-                std::cout << "Please select a caravan to add disband: ";
+                temp = "Right";
             }
-            
-            
-            while (!(std::cin >> input) || !(input > 0 && input <= 3)) {
-                std::cout << "Invalid input. Please use a positive interger betweemn 1 and 3: ";
-                std::cin.clear();
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            }
-            input -= 1;
-            caravanID want_caravan = static_cast<caravanID>(input);
-            // ADD OPPONENT PLACING
 
-            switch (want_caravan) {
-                case caravanID::left:
-                    // Split disband from action, remove action from functions
-                    if (action == "Add") {
-                        caravan_add(player_hand, player_caravan1, want_card, player_discard);
-                    
-                    } else if (action == "Disband") {
-                        disband(player_caravan1, player_discard);
-                    }
-                    break;
-                case caravanID::center:
-                    if (action == "Add") {
-                        caravan_add(player_hand, player_caravan2, want_card, player_discard);
-                    
-                    } else if (action == "Disband") {
-                        disband(player_caravan2, player_discard);
-                    }
-                    break;
-                case caravanID::right:
-                    if (action == "Add") {
-                        caravan_add(player_hand, player_caravan3, want_card, player_discard);
-                    
-                    } else if (action == "Disband") {
-                        disband(player_caravan3, player_discard);
-                    }
-                    break;     
-            }                
+            std::cout << temp << " caravan: " << std::endl;
+            for (const auto& c : caravan.cards) {
+                std::cout << "Rank: " << c.rank << ", Suit: " << c.suit << std::endl;
+            }
+            std::cout << temp << " caravan value: " << caravan.val << std::endl;
+
+            std::cout << " " << std::endl;
+            
+            dex++;
         }
 
-        if (player_deck.size() == 0) {
-            for (auto& card : player_discard) {
-                player_deck.push_back(card);
+        std::string condition = winCheck();
+        if (condition != "neither") {
+            if (condition == "player wins") {
+                cState.caps += cState.bet;
+
+                std::cout << "You win!" << '\n';
+
+                playing = false;
+                break;
+            } else {
+                cState.caps -= cState.bet;
+
+                std::cout << "Bot wins!" << '\n';
+
+                playing = false;
+                break;
             }
-            player_discard.clear();
         }
-        // Player turn needs own loop so they can be sent back up in case of wrong placement (Ex: doesn't follow direction, identical number cards, empty face)
-        player_hand.push_back(player_deck.back());
-        player_deck.pop_back();
-
-        // End of player turn, bot turn starts
-
-        
-
     }
-    
+
+    return cState.caps;
+}
+
+int main() {
     // Make sure every thing else is taken out of main, and game is placed in own game function!
     bool running = true;
     while (running) {
+        save(gameFunction());
         // Game function goes here
 
         std::cout << " "  << std::endl;
-        std::string quit = "N/A"; 
-        while (quit != "N" && quit != "Y" && quit != "n" && quit != "y") { // Closes app based on user input
+        std::string quit = "N/A";
+        while (quit != "n" || quit != "y" || quit == "yes" || quit == "no") { // Closes app based on user input
             std::cout << "Continue? y/n " << std::endl;
             std::cin >> quit;
+            quit = lowercase(quit);
 
-            if (quit == "Y" || quit == "y" || quit == "Yes" || quit == "yes") {
+            if (quit == "y" || quit == "yes") {
                 break;
-            } else if (quit == "N" || quit == "n" || quit == "No" || quit == "no") {
+            } else if (quit == "n" || quit == "no") {
                 return 0;
-            } else {
+            } else if (!(quit == "N/A")) {
                 std::cout << "Invalid input!" << std::endl;
-            }
+            }            
         }
     }
     return 0;
